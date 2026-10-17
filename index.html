@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>토닥이의 하루</title>
+    <style>
+
+        @font-face {
+        font-family: 'neodgm';
+        src: url('neodgm.woff') format('woff'); /* 파일 이름이 다르면 여기를 수정하세요 */
+        font-weight: normal;
+        font-style: normal;
+        }
+
+        body {
+            margin: 0; padding: 0; background-color: black;
+            display: flex; justify-content: center; align-items: center;
+            height: 100vh; overflow: hidden;
+        }
+        canvas {
+            background-color: #333333;
+            image-rendering: pixelated; /* 도트 선명하게 */
+            box-shadow: 0px 0px 20px rgba(0,0,0,0.5);
+        }
+        #videoModal {
+            display: none;
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            justify-content: center; align-items: center; flex-direction: column;
+            z-index: 10;
+        }
+        #videoContainer {
+            width: 80%; max-width: 800px; aspect-ratio: 16/9; background: #000;
+        }
+        iframe { width: 100%; height: 100%; border: none; }
+        .close-btn {
+            margin-top: 20px; padding: 10px 20px; font-size: 18px;
+            cursor: pointer; background: white; border: none; border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="1500" height="800"></canvas>
+
+    <div id="videoModal">
+        <div id="videoContainer">
+            <iframe id="videoPlayer" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+        </div>
+        <button class="close-btn" onclick="closeVideo()">닫기</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+
+        const rabbitImg = new Image();
+        // ★ 여기서 remove.bg로 배경을 지운 새로운 이미지의 이름을 넣어주세요!
+        rabbitImg.src = 'tokki_sprite1.png'; 
+        const bgImg = new Image();
+        bgImg.src = 'background.png';
+        const bedImg = new Image();
+        bedImg.src = 'bed1.png';
+        const deskImg = new Image();
+        deskImg.src = 'desk1.png';
+        const bagImg = new Image();
+        bagImg.src = 'bag1.png';
+
+        const player = {
+            x: 200, y: 300,
+            width: 120, height: 120,
+            speed: 2.5,
+            direction: 1,
+            isMoving: false,
+            frameX: 0, 
+            maxFrame: 7,
+            frameTimer: 0,
+            frameInterval: 10
+        };
+
+        // 이미지 원본 크기에 따른 자르기 규격 (이미지 로드 완료 후 자동 계산됨)
+        let spriteWidth = 0;  
+        let spriteHeight = 0; 
+
+        const interactObjects = [
+            {
+                x: 1050, y: 400, width: 250, height: 180,
+
+                imgX: 1000, imgY: 200, imgWidth: 380, imgHeight:480, // 방 배경에 어울리는 침대 위치와 크기 (필요시 조절)
+                image: bedImg,                            // 방금 만든 침대 이미지 연결
+                videoCount: 20,
+                text: "침대에 눕기 (Space)" // 침대 안내 문구
+            },
+            {
+                x: 600, y: 230, width: 300, height:100,       // 책상 콜라이더 박스 (토끼가 막히는 범위)
+                 imgX: 600, imgY: 230, imgWidth: 300, imgHeight: 200, // 책상 이미지가 그려지는 위치와 크기
+                image: deskImg,                                 // 위에서 만든 책상 이미지 연결
+                videoCount: 20,
+                text: "책상에서 공부하기 (Space)" // 책상 안내 문구
+            },
+            {
+                x: 100, y: 450, width: 60, height: 20,       // 책상 콜라이더 박스 (토끼가 막히는 범위)
+                 imgX: 100, imgY: 450, imgWidth: 80, imgHeight: 100, // 책상 이미지가 그려지는 위치와 크기
+                image: bagImg,                                 // 위에서 만든 책상 이미지 연결
+                videoCount: 20,
+                text: "가방 열기 (Space)" // ★ 가방 안내 문구 추가!
+            }
+        ];
+
+        const keys = {};
+        let isVideoPlaying = false;
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            if (e.code === 'Space' && !isVideoPlaying) checkInteraction();
+        });
+
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        function openVideo(url) {
+            isVideoPlaying = true;
+            document.getElementById('videoPlayer').src = url;
+            document.getElementById('videoModal').style.display = 'flex';
+        }
+
+        function closeVideo() {
+            isVideoPlaying = false;
+            document.getElementById('videoPlayer').src = ''; 
+            document.getElementById('videoModal').style.display = 'none';
+        }
+        function checkCollision(nextX, nextY, obj) 
+        {
+            return 
+            (
+            nextX < obj.x + obj.width &&
+            nextX + player.width > obj.x &&
+            nextY < obj.y + obj.height &&
+            nextY + player.height > obj.y
+            );
+        }
+        function checkInteraction() {
+           for (let obj of interactObjects) {
+        // 콜라이더 박스(obj) 주변에 30픽셀의 여유 공간(상호작용 가능 범위)을 줍니다.
+        const padding = 30; 
+        
+        const isNear = (
+            player.x - padding < obj.x + obj.width &&
+            player.x + player.width + padding > obj.x &&
+            player.y - padding < obj.y + obj.height &&
+            player.y + player.height + padding > obj.y
+        );
+
+        if (isNear) {
+            if (obj.videoCount) {
+                        // 랜덤으로 1부터 지정한 개수(videoCount) 사이의 숫자를 뽑습니다.
+                        const randomNum = Math.floor(Math.random() * obj.videoCount) + 1;
+                        
+                        // 주소 중간에 랜덤 숫자를 쏙 끼워 넣습니다. (백틱 ` 기호 사용)
+                        const randomUrl = `https://chaec0.github.io/daily-works/p/${randomNum}/`;
+                        
+                        // 완성된 랜덤 주소를 모달창(iframe)으로 엽니다.
+                        openVideo(randomUrl);
+                    } else if (obj.videoUrl) {
+                        // 만약 videoCount 없이 예전처럼 고정된 주소가 있다면 그걸 엽니다.
+                        openVideo(obj.videoUrl);
+                    }
+                    break;
+        }
+        }
+        }
+
+        function drawOutlinedText(text, x, y, fontSize = 20) {
+            ctx.font = `${fontSize}px 'neodgm'`;
+            ctx.textBaseline = 'middle';
+            
+            // 1. 검은색 외곽선 (상하좌우 대각선으로 촘촘히 그림)
+            ctx.fillStyle = "black";
+            const offset = 2; // 외곽선 두께 (원하면 1이나 2로 조절 가능)
+            ctx.fillText(text, x - offset, y);
+            ctx.fillText(text, x + offset, y);
+            ctx.fillText(text, x, y - offset);
+            ctx.fillText(text, x, y + offset);
+            ctx.fillText(text, x - offset, y - offset);
+            ctx.fillText(text, x + offset, y - offset);
+            ctx.fillText(text, x - offset, y + offset);
+            ctx.fillText(text, x + offset, y + offset);
+
+            // 2. 내부 흰색 글씨
+            ctx.fillStyle = "white";
+            ctx.fillText(text, x, y);
+        }
+
+        function update() {
+            if (isVideoPlaying) return; 
+
+            player.isMoving = false;
+            let dx = 0; let dy = 0;
+
+            if (keys['ArrowUp']) dy -= player.speed;
+            if (keys['ArrowDown']) dy += player.speed;
+            if (keys['ArrowLeft']) { dx -= player.speed; player.direction = -1; }
+            if (keys['ArrowRight']) { dx += player.speed; player.direction = 1; }
+
+            if (dx !== 0 || dy !== 0) {
+                player.isMoving = true;
+
+                // --- [1단계] X축 먼저 이동 후 충돌 검사 ---
+                player.x += dx;
+                for (let obj of interactObjects) {
+                    // 토끼 박스와 오브젝트 박스가 겹치는지 직접 확인
+                    if (
+                        player.x < obj.x + obj.width &&
+                        player.x + player.width > obj.x &&
+                        player.y < obj.y + obj.height &&
+                        player.y + player.height > obj.y
+                    ) {
+                        player.x -= dx; // 겹쳤으면 X축 이동 취소
+                        break;
+                    }
+                }
+
+                // --- [2단계] Y축 이동 후 충돌 검사 ---
+                player.y += dy;
+                for (let obj of interactObjects) {
+                    // 토끼 박스와 오브젝트 박스가 겹치는지 직접 확인
+                    if (
+                        player.x < obj.x + obj.width &&
+                        player.x + player.width > obj.x &&
+                        player.y < obj.y + obj.height &&
+                        player.y + player.height > obj.y
+                    ) {
+                        player.y -= dy; // 겹쳤으면 Y축 이동 취소
+                        break;
+                    }
+                }
+            }
+
+            // 기존 바닥 이동 범위 제한
+            const minX = 120;
+            const maxX = 1400;
+            const minY = 350;
+            const maxY = 700;
+
+            if (player.x < minX) player.x = minX;
+            if (player.x + player.width > maxX) player.x = maxX - player.width;
+            if (player.y < minY) player.y = minY;
+            if (player.y + player.height > maxY) player.y = maxY - player.height;
+
+            // 애니메이션 프레임 계산 (생략 없이 기존 코드 유지)
+            if (player.isMoving) {
+                player.frameTimer++;
+                if (player.frameTimer >= player.frameInterval) {
+                    player.frameX++;
+                    if (player.frameX > player.maxFrame) player.frameX = 1; 
+                    player.frameTimer = 0;
+                }
+            } else {
+                player.frameX = 0; 
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 1. 방 배경 그리기
+            if (bgImg.complete) { 
+                ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+            }
+
+            // 2. 오브젝트(침대, 책상 등) 반복문 처리
+            for (let obj of interactObjects) {
+                // [디버깅용] 콜라이더 박스 (빨간색 투명 상자 - 원하시면 나중에 지우셔도 됩니다)
+                // ctx.fillStyle = "rgba(255, 0, 0, 0.4)";
+                // ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
+
+                // 오브젝트 이미지 그리기 (중복 제거 및 안전한 로드 확인)
+                if (obj.image && obj.image.complete) {
+                    ctx.drawImage(obj.image, obj.imgX, obj.imgY, obj.imgWidth, obj.imgHeight);
+                }
+                
+                // 오브젝트별 상호작용 안내 텍스트 표시
+                if (obj.text) {
+                    drawOutlinedText(obj.text, obj.imgX + 10, obj.imgY - 10, 20);
+                }
+                }
+            // 스프라이트 규격이 아직 계산되지 않았으면 그리지 않음
+            if (spriteWidth === 0) return; 
+
+            // 3. 토끼 캐릭터 스프라이트 애니메이션 그리기
+            const col = player.frameX % 4; 
+            const row = Math.floor(player.frameX / 4); 
+
+            ctx.save(); 
+            ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+            ctx.scale(player.direction, 1); 
+            
+            ctx.drawImage(
+                rabbitImg, 
+                col * spriteWidth, row * spriteHeight, spriteWidth, spriteHeight, 
+                -player.width / 2, -player.height / 2, player.width, player.height 
+            );
+            
+            ctx.restore(); 
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // 이미지가 로드되면 자동으로 정확한 칸 크기를 계산하고 게임 시작
+        rabbitImg.onload = () => {
+            spriteWidth = rabbitImg.width / 4;  // 가로 4등분
+            spriteHeight = rabbitImg.height / 2; // 세로 2등분
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

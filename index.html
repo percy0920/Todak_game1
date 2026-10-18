@@ -45,7 +45,10 @@
 
     <div id="videoModal">
         <div id="videoContainer">
-            <iframe id="videoPlayer" src="" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+            <!-- 사이트용 -->
+            <iframe id="videoIframe" src="" allow="autoplay; encrypted-media" allowfullscreen style="display: none;"></iframe>
+            <!-- 로컬 파일용 -->
+            <video id="videoFile" controls style="width: 100%; height: 100%; object-fit: contain; display: none;"></video>
         </div>
         <button class="close-btn" onclick="closeVideo()">닫기</button>
     </div>
@@ -89,7 +92,7 @@
 
                 imgX: 1000, imgY: 200, imgWidth: 380, imgHeight:480, // 방 배경에 어울리는 침대 위치와 크기 (필요시 조절)
                 image: bedImg,                            // 방금 만든 침대 이미지 연결
-                videoCount: 20,
+                videoSrc: "bed_video1.mp4",
                 text: "침대에 눕기 (Space)" // 침대 안내 문구
             },
             {
@@ -103,7 +106,7 @@
                 x: 100, y: 450, width: 60, height: 20,       // 책상 콜라이더 박스 (토끼가 막히는 범위)
                  imgX: 100, imgY: 450, imgWidth: 80, imgHeight: 100, // 책상 이미지가 그려지는 위치와 크기
                 image: bagImg,                                 // 위에서 만든 책상 이미지 연결
-                videoCount: 20,
+                videoSrc: "bag_video.mp4",
                 text: "가방 열기 (Space)" // ★ 가방 안내 문구 추가!
             }
         ];
@@ -120,17 +123,37 @@
             keys[e.code] = false;
         });
 
-        function openVideo(url) {
+        function openVideo(url, type) {
             isVideoPlaying = true;
-            document.getElementById('videoPlayer').src = url;
+            const iframe = document.getElementById('videoIframe');
+            const video = document.getElementById('videoFile');
+
+            if (type === 'iframe') {
+                video.style.display = 'none'; // 비디오 숨기기
+                iframe.style.display = 'block'; // iframe 보이기
+                iframe.src = url;
+            } else if (type === 'video') {
+                iframe.style.display = 'none'; // iframe 숨기기
+                video.style.display = 'block'; // 비디오 보이기
+                video.src = url;
+                video.play(); // 자동 재생
+            }
+
             document.getElementById('videoModal').style.display = 'flex';
         }
 
         function closeVideo() {
             isVideoPlaying = false;
-            document.getElementById('videoPlayer').src = ''; 
+            const iframe = document.getElementById('videoIframe');
+            const video = document.getElementById('videoFile');
+
+            video.pause(); // 파일 재생 멈춤
+            video.src = '';
+            iframe.src = ''; 
+            
             document.getElementById('videoModal').style.display = 'none';
         }
+
         function checkCollision(nextX, nextY, obj) 
         {
             return 
@@ -155,19 +178,18 @@
 
         if (isNear) {
             if (obj.videoCount) {
-                        // 랜덤으로 1부터 지정한 개수(videoCount) 사이의 숫자를 뽑습니다.
-                        const randomNum = Math.floor(Math.random() * obj.videoCount) + 1;
-                        
-                        // 주소 중간에 랜덤 숫자를 쏙 끼워 넣습니다. (백틱 ` 기호 사용)
-                        const randomUrl = `https://chaec0.github.io/daily-works/p/${randomNum}/`;
-                        
-                        // 완성된 랜덤 주소를 모달창(iframe)으로 엽니다.
-                        openVideo(randomUrl);
-                    } else if (obj.videoUrl) {
-                        // 만약 videoCount 없이 예전처럼 고정된 주소가 있다면 그걸 엽니다.
-                        openVideo(obj.videoUrl);
-                    }
-                    break;
+                // 랜덤 사이트 재생
+                const randomNum = Math.floor(Math.random() * obj.videoCount) + 1;
+                const randomUrl = `https://chaec0.github.io/daily-works/p/${randomNum}/`;
+                openVideo(randomUrl, 'iframe');
+            } else if (obj.videoUrl) {
+                // 고정 사이트 재생
+                openVideo(obj.videoUrl, 'iframe');
+            } else if (obj.videoSrc) {
+                // 파일(mp4) 재생 
+                openVideo(obj.videoSrc, 'video');
+            }
+            break;
         }
         }
         }
